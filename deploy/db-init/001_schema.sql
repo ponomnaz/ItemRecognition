@@ -42,7 +42,11 @@ CREATE TABLE IF NOT EXISTS recognition_requests (
     CONSTRAINT ck_image_url_nonempty CHECK (length(trim(image_url)) > 0),
     CONSTRAINT ck_image_hash_format CHECK (
                                               image_hash IS NULL OR image_hash ~ '^[0-9a-fA-F]{64}$'
-                                          )
+                                          ),
+    -- Require hash once processing moved past initial creation (allows FAILED/CREATED without hash)
+    CONSTRAINT ck_image_hash_required CHECK (
+                                                status IN ('CREATED', 'FAILED') OR image_hash IS NOT NULL
+                                            )
     );
 
 CREATE INDEX IF NOT EXISTS ix_requests_created_at ON recognition_requests (created_at DESC);
@@ -101,8 +105,8 @@ CREATE TABLE IF NOT EXISTS predicted_objects (
     CONSTRAINT ck_pred_confidence CHECK (confidence IS NULL OR (confidence >= 0.0 AND confidence <= 1.0))
     );
 
--- stable ordering per request
-CREATE UNIQUE INDEX IF NOT EXISTS ux_predicted_req_rank ON predicted_objects (request_id, rank);
+-- stable ordering per AI call (allows multiple attempts per request)
+CREATE UNIQUE INDEX IF NOT EXISTS ux_predicted_call_rank ON predicted_objects (ai_call_id, rank);
 CREATE INDEX IF NOT EXISTS ix_predicted_req_primary ON predicted_objects (request_id, is_primary);
 CREATE INDEX IF NOT EXISTS ix_predicted_name_lower ON predicted_objects ((lower(name)));
 
@@ -110,6 +114,7 @@ CREATE INDEX IF NOT EXISTS ix_predicted_name_lower ON predicted_objects ((lower(
 CREATE TABLE IF NOT EXISTS confirmed_objects (
                                                  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     request_id   uuid NOT NULL REFERENCES recognition_requests(id) ON DELETE CASCADE,
+    ai_call_id   uuid NOT NULL REFERENCES ai_calls(id) ON DELETE CASCADE,
     created_at  timestamptz NOT NULL DEFAULT now(),
     name        text NOT NULL,
 
@@ -119,6 +124,8 @@ CREATE TABLE IF NOT EXISTS confirmed_objects (
 -- no duplicates (case-insensitive) per request
 CREATE UNIQUE INDEX IF NOT EXISTS ux_confirmed_req_name_lower
     ON confirmed_objects (request_id, (lower(name)));
+
+CREATE INDEX IF NOT EXISTS ix_confirmed_ai_call_id ON confirmed_objects (ai_call_id);
 
 -- Materials dictionary
 CREATE TABLE IF NOT EXISTS materials (
