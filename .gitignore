@@ -1,0 +1,69 @@
+############################################
+# Build outputs
+############################################
+**/bin/
+**/obj/
+artifacts/
+**/GeneratedFiles/
+
+############################################
+# NuGet
+############################################
+packages/
+*.nupkg
+*.snupkg
+
+############################################
+# Rider / JetBrains
+############################################
+.idea/
+*.sln.iml
+*.iml
+*.ipr
+*.iws
+**/_ReSharper.Caches/
+*.DotSettings.user
+*.resharper.user
+
+############################################
+# Visual Studio
+############################################
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+############################################
+# Test results / coverage
+############################################
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+*.opencover.xml
+*.trx
+
+############################################
+# Logs / temp
+############################################
+*.log
+*.tmp
+*.bak
+
+############################################
+# OS files
+############################################
+.DS_Store
+Thumbs.db
+
+############################################
+# Local environment / secrets
+############################################
+.env
+.env.*
+!.env.example
+
+# Local appsettings overrides
+appsettings.Local.json
+appsettings.*.Local.json

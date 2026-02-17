@@ -1,0 +1,17 @@
+# Normalize line endings in repo
+* text=auto
+
+# Keep common text files as LF
+*.cs      text eol=lf
+*.csproj  text eol=lf
+*.sln     text eol=lf
+*.json    text eol=lf
+*.yml     text eol=lf
+*.yaml    text eol=lf
+*.md      text eol=lf
+*.gitignore text eol=lf
+*.gitattributes text eol=lf
+
+# Windows scripts
+*.bat     text eol=crlf
+*.cmd     text eol=crlf
