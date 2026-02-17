@@ -1,0 +1,21 @@
+﻿services:
+  db:
+    image: postgres:16-alpine
+    container_name: itemrecognition-postgres
+    environment:
+      POSTGRES_USER: itemrecognition
+      POSTGRES_PASSWORD: itemrecognition_pwd
+      POSTGRES_DB: itemrecognition
+    ports:
+      - "55432:5432"
+    volumes:
+      - itemrecognition_pgdata:/var/lib/postgresql/data
+      - ./db-init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U itemrecognition -d itemrecognition"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  itemrecognition_pgdata:
