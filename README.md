@@ -28,12 +28,23 @@
       (порты могут отличаться — см. `launchSettings.json`)
 
 ## Конфигурация
-Строка подключения хранится в:
+Базовые секции настроек лежат в:
 - `ItemRecognition.Api/appsettings.json`
 - `ItemRecognition.Api/appsettings.Development.json`
 
-Секреты (ключи AI и т.п.) коммитить нельзя.
-Использовать .NET User Secrets или переменные окружения.
+Секреты (строка подключения, ключ GigaChat) в репозиторий не добавляются.
+Используйте `.NET User Secrets`:
+
+```bash
+dotnet user-secrets set "ConnectionStrings:Postgres" "Host=localhost;Port=55432;Database=itemrecognition;Username=itemrecognition;Password=itemrecognition_pwd" --project ItemRecognition.Api
+dotnet user-secrets set "GigaChat:AuthorizationKey" "<YOUR_GIGACHAT_AUTH_KEY>" --project ItemRecognition.Api
+```
+
+Проверка:
+
+```bash
+dotnet user-secrets list --project ItemRecognition.Api
+```
 
 ## Примечания
 - Используются EF Core + PostgreSQL.
