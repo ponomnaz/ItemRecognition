@@ -20,3 +20,11 @@ Accept: application/json
     "стол слесарный"
   ]
 }
+
+### 3) Anonymized export (no imageUrl/imageStorageKey)
+GET {{host}}/api/exports/anonymized
+Accept: application/json
+
+### 4) Analytics summary
+GET {{host}}/api/analytics/summary
+Accept: application/json
