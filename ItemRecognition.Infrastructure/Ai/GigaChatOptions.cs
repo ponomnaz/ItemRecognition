@@ -11,6 +11,11 @@ public sealed class GigaChatOptions
 
     public string AuthUrl { get; set; } = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth";
     public string ChatCompletionsUrl { get; set; } = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions";
+    public string FilesUrl { get; set; } = "https://gigachat.devices.sberbank.ru/api/v1/files";
+    public string FilesUploadPurpose { get; set; } = "general";
+    public bool UseAttachmentsForImages { get; set; } = true;
+    public bool DeleteUploadedFilesAfterRequest { get; set; } = false;
+    public string? ClientId { get; set; }
 
     public double? Temperature { get; set; } = 0.1d;
     public double? TopP { get; set; } = 0.1d;

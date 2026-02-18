@@ -27,6 +27,9 @@ public sealed class GigaChatAiVisionClient(
     };
 
     private readonly SemaphoreSlim _tokenLock = new(1, 1);
+    private readonly string _clientId = string.IsNullOrWhiteSpace(options.ClientId)
+        ? Guid.NewGuid().ToString()
+        : options.ClientId.Trim();
 
     private string? _accessToken;
     private DateTimeOffset _accessTokenExpiresAtUtc = DateTimeOffset.MinValue;
@@ -80,39 +83,61 @@ public sealed class GigaChatAiVisionClient(
         var stopwatch = Stopwatch.StartNew();
         var requestPayloadJson = "{}";
         var responseJson = "{}";
+        string? accessToken = null;
+        string? uploadedFileId = null;
 
-        AiResult<IReadOnlyList<TPrediction>> result;
+        AiResult<IReadOnlyList<TPrediction>>? result = null;
 
         try
         {
-            var accessToken = await GetAccessTokenAsync(cancellationToken);
+            accessToken = await GetAccessTokenAsync(cancellationToken);
 
-            var requestPayload = BuildChatPayload(image, promptText, itemNames);
-            requestPayloadJson = requestPayload.ToJsonString(JsonOptions);
-
-            using var requestMessage = new HttpRequestMessage(HttpMethod.Post, options.ChatCompletionsUrl);
-            requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-            requestMessage.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            requestMessage.Content = new StringContent(requestPayloadJson, Encoding.UTF8, "application/json");
-
-            using var response = await httpClient.SendAsync(
-                requestMessage,
-                HttpCompletionOption.ResponseHeadersRead,
-                cancellationToken);
-            var rawResponse = await response.Content.ReadAsStringAsync(cancellationToken);
-            responseJson = NormalizeJson(rawResponse);
-
-            if (!response.IsSuccessStatusCode)
+            if (options.UseAttachmentsForImages)
             {
-                var error = BuildHttpError(response.StatusCode, rawResponse);
-                result = AiResult<IReadOnlyList<TPrediction>>.Failure(error.Code, error.Message);
+                var uploadResult = await UploadImageAsync(accessToken, image, cancellationToken);
+                if (!uploadResult.IsSuccess)
+                {
+                    responseJson = uploadResult.ResponseJson;
+                    result = AiResult<IReadOnlyList<TPrediction>>.Failure(
+                        uploadResult.Error!.Value.Code,
+                        uploadResult.Error.Value.Message);
+                }
+                else
+                {
+                    uploadedFileId = uploadResult.FileId;
+                }
             }
-            else
+
+            if (result is null)
             {
-                var assistantContent = ExtractAssistantContent(rawResponse);
-                var assistantJson = ExtractJsonFromText(assistantContent);
-                var value = parser(assistantJson);
-                result = AiResult<IReadOnlyList<TPrediction>>.Success(value);
+                var requestPayload = BuildChatPayload(image, promptText, itemNames, uploadedFileId);
+                requestPayloadJson = requestPayload.ToJsonString(JsonOptions);
+
+                using var requestMessage = new HttpRequestMessage(HttpMethod.Post, options.ChatCompletionsUrl);
+                requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+                requestMessage.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                AddClientIdHeader(requestMessage.Headers);
+                requestMessage.Content = new StringContent(requestPayloadJson, Encoding.UTF8, "application/json");
+
+                using var response = await httpClient.SendAsync(
+                    requestMessage,
+                    HttpCompletionOption.ResponseHeadersRead,
+                    cancellationToken);
+                var rawResponse = await response.Content.ReadAsStringAsync(cancellationToken);
+                responseJson = NormalizeJson(rawResponse);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var error = BuildHttpError(response.StatusCode, rawResponse);
+                    result = AiResult<IReadOnlyList<TPrediction>>.Failure(error.Code, error.Message);
+                }
+                else
+                {
+                    var assistantContent = ExtractAssistantContent(rawResponse);
+                    var assistantJson = ExtractJsonFromText(assistantContent);
+                    var value = parser(assistantJson);
+                    result = AiResult<IReadOnlyList<TPrediction>>.Success(value);
+                }
             }
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -134,6 +159,20 @@ public sealed class GigaChatAiVisionClient(
             logger.LogError(ex, "Unexpected AI client error.");
             result = AiResult<IReadOnlyList<TPrediction>>.Failure("ai_client_error", ex.Message);
         }
+        finally
+        {
+            if (options.UseAttachmentsForImages &&
+                options.DeleteUploadedFilesAfterRequest &&
+                !string.IsNullOrWhiteSpace(accessToken) &&
+                !string.IsNullOrWhiteSpace(uploadedFileId))
+            {
+                await TryDeleteUploadedFileAsync(accessToken!, uploadedFileId!, CancellationToken.None);
+            }
+        }
+
+        result ??= AiResult<IReadOnlyList<TPrediction>>.Failure(
+            "ai_client_error",
+            "AI client completed without a result.");
 
         stopwatch.Stop();
 
@@ -295,34 +334,56 @@ public sealed class GigaChatAiVisionClient(
     private JsonObject BuildChatPayload(
         DownloadedImage image,
         string promptText,
-        IReadOnlyList<string>? itemNames)
+        IReadOnlyList<string>? itemNames,
+        string? uploadedFileId)
     {
-        var imageBase64 = Convert.ToBase64String(image.Content);
-        var dataUrl = $"data:{image.ContentType};base64,{imageBase64}";
+        JsonNode messageContent;
+        JsonArray? attachments = null;
 
-        var messages = new JsonArray
+        if (options.UseAttachmentsForImages)
         {
-            new JsonObject
+            if (string.IsNullOrWhiteSpace(uploadedFileId))
             {
-                ["role"] = "user",
-                ["content"] = new JsonArray
+                throw new InvalidOperationException("Uploaded image id is required when attachments mode is enabled.");
+            }
+
+            messageContent = promptText;
+            attachments = new JsonArray(uploadedFileId);
+        }
+        else
+        {
+            var imageBase64 = Convert.ToBase64String(image.Content);
+            var dataUrl = $"data:{image.ContentType};base64,{imageBase64}";
+            messageContent = new JsonArray
+            {
+                new JsonObject
                 {
-                    new JsonObject
+                    ["type"] = "text",
+                    ["text"] = promptText
+                },
+                new JsonObject
+                {
+                    ["type"] = "image_url",
+                    ["image_url"] = new JsonObject
                     {
-                        ["type"] = "text",
-                        ["text"] = promptText
-                    },
-                    new JsonObject
-                    {
-                        ["type"] = "image_url",
-                        ["image_url"] = new JsonObject
-                        {
-                            ["url"] = dataUrl
-                        }
+                        ["url"] = dataUrl
                     }
                 }
-            }
+            };
+        }
+
+        var primaryMessage = new JsonObject
+        {
+            ["role"] = "user",
+            ["content"] = messageContent
         };
+
+        if (attachments is not null)
+        {
+            primaryMessage["attachments"] = attachments;
+        }
+
+        var messages = new JsonArray { primaryMessage };
 
         if (itemNames is { Count: > 0 })
         {
@@ -357,6 +418,138 @@ public sealed class GigaChatAiVisionClient(
         }
 
         return payload;
+    }
+
+    private async Task<FileUploadResult> UploadImageAsync(
+        string accessToken,
+        DownloadedImage image,
+        CancellationToken cancellationToken)
+    {
+        using var form = new MultipartFormDataContent();
+        using var fileContent = new ByteArrayContent(image.Content);
+        fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse(image.ContentType);
+        form.Add(fileContent, "file", BuildFileName(image.ContentType));
+        form.Add(new StringContent(options.FilesUploadPurpose), "purpose");
+
+        using var requestMessage = new HttpRequestMessage(HttpMethod.Post, options.FilesUrl);
+        requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        requestMessage.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        AddClientIdHeader(requestMessage.Headers);
+        requestMessage.Content = form;
+
+        using var response = await httpClient.SendAsync(
+            requestMessage,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken);
+        var rawResponse = await response.Content.ReadAsStringAsync(cancellationToken);
+        var normalizedResponse = NormalizeJson(rawResponse);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = BuildHttpError(response.StatusCode, rawResponse);
+            return new FileUploadResult(false, null, normalizedResponse, error);
+        }
+
+        if (!TryExtractFileId(rawResponse, out var fileId))
+        {
+            return new FileUploadResult(
+                false,
+                null,
+                normalizedResponse,
+                ("ai_invalid_response", "AI provider file upload response does not contain file id."));
+        }
+
+        return new FileUploadResult(true, fileId, normalizedResponse, null);
+    }
+
+    private async Task TryDeleteUploadedFileAsync(string accessToken, string fileId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var requestMessage = new HttpRequestMessage(HttpMethod.Post, BuildDeleteFileUrl(fileId));
+            requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            requestMessage.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            AddClientIdHeader(requestMessage.Headers);
+
+            using var response = await httpClient.SendAsync(
+                requestMessage,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken);
+
+            if (response.IsSuccessStatusCode)
+            {
+                return;
+            }
+
+            var rawResponse = await response.Content.ReadAsStringAsync(cancellationToken);
+            logger.LogDebug(
+                "Failed to delete uploaded GigaChat file {FileId}. HTTP {StatusCode}. Response: {Response}",
+                fileId,
+                (int)response.StatusCode,
+                rawResponse);
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Failed to delete uploaded GigaChat file {FileId}.", fileId);
+        }
+    }
+
+    private static bool TryExtractFileId(string rawResponse, out string fileId)
+    {
+        fileId = string.Empty;
+        try
+        {
+            using var document = JsonDocument.Parse(rawResponse);
+            var root = document.RootElement;
+
+            return TryReadStringProperty(root, "id", out fileId) ||
+                   TryReadStringProperty(root, "file_id", out fileId);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool TryReadStringProperty(JsonElement element, string propertyName, out string value)
+    {
+        value = string.Empty;
+        if (!element.TryGetProperty(propertyName, out var propertyElement) ||
+            propertyElement.ValueKind != JsonValueKind.String)
+        {
+            return false;
+        }
+
+        var parsed = propertyElement.GetString();
+        if (string.IsNullOrWhiteSpace(parsed))
+        {
+            return false;
+        }
+
+        value = parsed;
+        return true;
+    }
+
+    private static string BuildFileName(string contentType) =>
+        contentType switch
+        {
+            "image/jpeg" => "image.jpg",
+            "image/png" => "image.png",
+            "image/webp" => "image.webp",
+            _ => "image.bin"
+        };
+
+    private string BuildDeleteFileUrl(string fileId) =>
+        $"{options.FilesUrl.TrimEnd('/')}/{Uri.EscapeDataString(fileId)}/delete";
+
+    private void AddClientIdHeader(HttpRequestHeaders headers)
+    {
+        if (string.IsNullOrWhiteSpace(_clientId))
+        {
+            return;
+        }
+
+        headers.TryAddWithoutValidation("X-Client-ID", _clientId);
     }
 
     private static string ExtractAssistantContent(string rawResponse)
@@ -659,6 +852,12 @@ public sealed class GigaChatAiVisionClient(
     {
         return TryNormalizeJson(payload, out var json) ? json : "{}";
     }
+
+    private readonly record struct FileUploadResult(
+        bool IsSuccess,
+        string? FileId,
+        string ResponseJson,
+        (string Code, string Message)? Error);
 
     private static void ValidateCallInput(
         Guid requestId,
