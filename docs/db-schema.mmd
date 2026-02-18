@@ -1,5 +1,4 @@
-﻿```mermaid
-erDiagram
+﻿erDiagram
   recognition_requests {
     uuid id PK
     timestamptz created_at
@@ -64,4 +63,3 @@ erDiagram
   ai_calls ||--o{ confirmed_objects : logged_for
   confirmed_objects ||--o{ confirmed_object_materials : uses
   materials ||--o{ confirmed_object_materials : contains
-```
