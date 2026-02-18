@@ -1,4 +1,6 @@
 ﻿
+using ItemRecognition.Infrastructure.Ai;
+
 namespace ItemRecognition.Api;
 
 public class Startup(IConfiguration configuration)
@@ -8,6 +10,11 @@ public class Startup(IConfiguration configuration)
     public void ConfigureServices(IServiceCollection services)
     {
         services.AddControllers();
+
+        services.AddGigaChatAiVisionClient(options =>
+        {
+            Configuration.GetSection(GigaChatOptions.SectionName).Bind(options);
+        });
 
         services.AddEndpointsApiExplorer();
         services.AddSwaggerGen();
