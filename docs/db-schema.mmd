@@ -1,0 +1,67 @@
+﻿```mermaid
+erDiagram
+  recognition_requests {
+    uuid id PK
+    timestamptz created_at
+    timestamptz updated_at
+    request_status status
+    text image_url
+    char(64) image_hash
+    text image_storage_key
+  }
+
+  ai_calls {
+    uuid id PK
+    uuid request_id FK
+    ai_stage stage
+    timestamptz created_at
+    text provider
+    text model
+    text prompt_version
+    text prompt_text
+    jsonb request_payload
+    jsonb response_json
+    boolean is_success
+    text error_message
+    int duration_ms
+  }
+
+  predicted_objects {
+    uuid id PK
+    uuid request_id FK
+    uuid ai_call_id FK
+    timestamptz created_at
+    text name
+    boolean is_primary
+    real confidence
+    int rank
+  }
+
+  confirmed_objects {
+    uuid id PK
+    uuid request_id FK
+    uuid ai_call_id FK
+    timestamptz created_at
+    text name
+  }
+
+  materials {
+    uuid id PK
+    timestamptz created_at
+    citext name
+  }
+
+  confirmed_object_materials {
+    uuid confirmed_object_id PK, FK
+    uuid material_id PK, FK
+    timestamptz created_at
+  }
+
+  recognition_requests ||--o{ ai_calls : has
+  recognition_requests ||--o{ predicted_objects : has
+  recognition_requests ||--o{ confirmed_objects : has
+  ai_calls ||--o{ predicted_objects : logged_for
+  ai_calls ||--o{ confirmed_objects : logged_for
+  confirmed_objects ||--o{ confirmed_object_materials : uses
+  materials ||--o{ confirmed_object_materials : contains
+```

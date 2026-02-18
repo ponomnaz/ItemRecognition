@@ -76,7 +76,7 @@ public sealed class DetectMaterialsUseCase(
                 recognitionRequest.Id,
                 image,
                 normalizedItemNames,
-                PromptVersion.MaterialsV3,
+                PromptVersion.MaterialsV1,
                 promptText,
                 cancellationToken);
 

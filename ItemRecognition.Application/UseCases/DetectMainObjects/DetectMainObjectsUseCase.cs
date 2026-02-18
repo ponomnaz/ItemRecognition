@@ -50,7 +50,7 @@ public sealed class DetectMainObjectsUseCase(
             var aiResult = await aiVisionClient.DetectMainObjectsAsync(
                 recognitionRequest.Id,
                 image,
-                PromptVersion.MainObjectsV3,
+                PromptVersion.MainObjectsV1,
                 MainObjectsPrompt.Build(),
                 cancellationToken);
 

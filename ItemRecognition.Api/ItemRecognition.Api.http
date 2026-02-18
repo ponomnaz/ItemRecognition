@@ -1,4 +1,4 @@
-@host = http://localhost:5000
+﻿@host = http://localhost:5077
 @recognition_id = 00000000-0000-0000-0000-000000000000
 
 ### 1) Detect main objects by image URL
