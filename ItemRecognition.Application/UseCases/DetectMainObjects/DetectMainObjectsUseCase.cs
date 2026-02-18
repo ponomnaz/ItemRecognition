@@ -50,7 +50,7 @@ public sealed class DetectMainObjectsUseCase(
             var aiResult = await aiVisionClient.DetectMainObjectsAsync(
                 recognitionRequest.Id,
                 image,
-                PromptVersion.MainObjectsV1,
+                PromptVersion.MainObjectsV2,
                 MainObjectsPrompt.Build(),
                 cancellationToken);
 
@@ -178,8 +178,41 @@ public sealed class DetectMainObjectsUseCase(
             fallbackRank++;
         }
 
-        return normalized
+        if (normalized.Count == 0)
+        {
+            return [];
+        }
+
+        var primaryOnly = normalized.Where(prediction => prediction.IsPrimary).ToArray();
+        var candidates = primaryOnly.Length > 0
+            ? primaryOnly
+            : normalized.ToArray();
+
+        var ordered = candidates
             .OrderBy(prediction => prediction.Rank)
+            .ThenByDescending(prediction => prediction.Confidence ?? -1f)
+            .Take(5)
+            .ToArray();
+
+        var deduplicated = new List<MainObjectPrediction>(ordered.Length);
+        var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var prediction in ordered)
+        {
+            if (!seenNames.Add(prediction.Name))
+            {
+                continue;
+            }
+
+            deduplicated.Add(prediction);
+        }
+
+        return deduplicated
+            .Select((prediction, index) => new MainObjectPrediction(
+                prediction.Name,
+                true,
+                prediction.Confidence,
+                index + 1))
             .ToArray();
     }
 }

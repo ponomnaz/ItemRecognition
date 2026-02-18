@@ -99,6 +99,54 @@ public sealed class DetectMainObjectsUseCaseTests
             useCase.ExecuteAsync(new DetectMainObjectsRequest("not-a-url")));
     }
 
+    [Fact]
+    public async Task ExecuteAsync_WhenAiReturnsSeveralMainObjects_ReturnsOrderedList()
+    {
+        var requestRepository = new InMemoryRecognitionRequestRepository();
+        var aiCallRepository = new InMemoryAiCallRepository();
+        var predictedObjectRepository = new InMemoryPredictedObjectRepository();
+
+        var aiPredictions = new[]
+        {
+            new MainObjectPrediction("ручка", true, 0.75f, 2),
+            new MainObjectPrediction("ежедневник", true, 0.91f, 1),
+            new MainObjectPrediction("фон", false, 0.99f, 1)
+        };
+
+        var useCase = new DetectMainObjectsUseCase(
+            requestRepository,
+            aiCallRepository,
+            predictedObjectRepository,
+            new StubImageDownloader(),
+            new StubImageHasher(),
+            new StubImageStorage(),
+            new StubAiVisionClient(aiCallRepository, shouldFail: false, aiPredictions),
+            new InMemoryUnitOfWork());
+
+        var response = await useCase.ExecuteAsync(
+            new DetectMainObjectsRequest("https://example.com/image.jpg"));
+
+        Assert.True(response.IsSuccess);
+        Assert.Equal(2, response.Objects.Count);
+
+        Assert.Collection(
+            response.Objects,
+            first =>
+            {
+                Assert.Equal("ежедневник", first.Name);
+                Assert.True(first.IsPrimary);
+                Assert.Equal(1, first.Rank);
+            },
+            second =>
+            {
+                Assert.Equal("ручка", second.Name);
+                Assert.True(second.IsPrimary);
+                Assert.Equal(2, second.Rank);
+            });
+
+        Assert.Equal(2, predictedObjectRepository.Objects.Count);
+    }
+
     private sealed class InMemoryRecognitionRequestRepository : IRecognitionRequestRepository
     {
         private readonly List<RecognitionRequest> _requests = [];
@@ -193,7 +241,11 @@ public sealed class DetectMainObjectsUseCaseTests
             Task.FromResult(new ImageStorageResult("stored-image.jpg", image.ContentLength, image.ContentType));
     }
 
-    private sealed class StubAiVisionClient(InMemoryAiCallRepository aiCallRepository, bool shouldFail) : IAiVisionClient
+    private sealed class StubAiVisionClient(
+        InMemoryAiCallRepository aiCallRepository,
+        bool shouldFail,
+        IReadOnlyList<MainObjectPrediction>? predictions = null)
+        : IAiVisionClient
     {
         public async Task<AiResult<IReadOnlyList<MainObjectPrediction>>> DetectMainObjectsAsync(
             Guid requestId,
@@ -224,9 +276,10 @@ public sealed class DetectMainObjectsUseCaseTests
             }
 
             return AiResult<IReadOnlyList<MainObjectPrediction>>.Success(
-            [
-                new MainObjectPrediction("стол", true, 0.94f, 1)
-            ]);
+                predictions ??
+                [
+                    new MainObjectPrediction("стол", true, 0.94f, 1)
+                ]);
         }
 
         public Task<AiResult<IReadOnlyList<MaterialsPrediction>>> DetectMaterialsAsync(

@@ -21,7 +21,9 @@ public sealed class DetectMaterialsRequestDtoValidator : AbstractValidator<Detec
             .NotEmpty()
             .WithMessage("Item name is required.")
             .MaximumLength(200)
-            .WithMessage("Item name length must be less than or equal to 200 characters.");
+            .WithMessage("Item name length must be less than or equal to 200 characters.")
+            .Must(ContainAtLeastOneLetter)
+            .WithMessage("Item name must contain at least one letter.");
     }
 
     private static bool HaveUniqueValuesIgnoringCase(IReadOnlyList<string>? items)
@@ -32,19 +34,11 @@ public sealed class DetectMaterialsRequestDtoValidator : AbstractValidator<Detec
         }
 
         var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var item in items)
-        {
-            if (string.IsNullOrWhiteSpace(item))
-            {
-                continue;
-            }
+        return items.Where(item => !string.IsNullOrWhiteSpace(item)).All(item => set.Add(item.Trim()));
+    }
 
-            if (!set.Add(item.Trim()))
-            {
-                return false;
-            }
-        }
-
-        return true;
+    private static bool ContainAtLeastOneLetter(string? itemName)
+    {
+        return !string.IsNullOrWhiteSpace(itemName) && itemName.Any(char.IsLetter);
     }
 }
