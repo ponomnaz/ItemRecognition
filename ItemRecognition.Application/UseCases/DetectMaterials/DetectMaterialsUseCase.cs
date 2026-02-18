@@ -76,7 +76,7 @@ public sealed class DetectMaterialsUseCase(
                 recognitionRequest.Id,
                 image,
                 normalizedItemNames,
-                PromptVersion.MaterialsV1,
+                PromptVersion.MaterialsV3,
                 promptText,
                 cancellationToken);
 
@@ -344,7 +344,8 @@ public sealed class DetectMaterialsUseCase(
         }
 
         var allowed = new HashSet<string>(allowedItemNames, StringComparer.OrdinalIgnoreCase);
-        var byItemName = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+        var byItemName = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        var seenByItemName = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var prediction in predictions)
         {
@@ -356,14 +357,21 @@ public sealed class DetectMaterialsUseCase(
 
             if (!byItemName.TryGetValue(itemName, out var materials))
             {
-                materials = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                materials = [];
                 byItemName[itemName] = materials;
+                seenByItemName[itemName] = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             }
 
+            var seen = seenByItemName[itemName];
             foreach (var material in prediction.Materials)
             {
                 var normalizedMaterial = material?.Trim();
                 if (string.IsNullOrWhiteSpace(normalizedMaterial))
+                {
+                    continue;
+                }
+
+                if (!seen.Add(normalizedMaterial))
                 {
                     continue;
                 }
@@ -373,7 +381,7 @@ public sealed class DetectMaterialsUseCase(
         }
 
         return byItemName
-            .Select(pair => new MaterialsPrediction(pair.Key, pair.Value.ToArray()))
+            .Select(pair => new MaterialsPrediction(pair.Key, pair.Value))
             .OrderBy(prediction => prediction.ItemName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }

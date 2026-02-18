@@ -17,7 +17,7 @@ public sealed class GigaChatOptions
     public bool DeleteUploadedFilesAfterRequest { get; set; } = false;
     public string? ClientId { get; set; }
 
-    public double? Temperature { get; set; } = 0.1d;
+    public double? Temperature { get; set; } = 0.0d;
     public double? TopP { get; set; } = 0.1d;
     public int? MaxTokens { get; set; }
 
