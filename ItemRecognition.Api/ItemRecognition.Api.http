@@ -1,0 +1,22 @@
+@host = http://localhost:5000
+@recognition_id = 00000000-0000-0000-0000-000000000000
+
+### 1) Detect main objects by image URL
+POST {{host}}/api/recognition
+Content-Type: application/json
+Accept: application/json
+
+{
+  "imageUrl": "https://mossklad.ru/upload/iblock/680/snc00v17ci0ziids6wot990fd42jv0gv/sls_6_locksmith_table_20_03.jpg"
+}
+
+### 2) Detect materials for confirmed objects
+POST {{host}}/api/recognition/{{recognition_id}}/materials
+Content-Type: application/json
+Accept: application/json
+
+{
+  "items": [
+    "стол слесарный"
+  ]
+}
